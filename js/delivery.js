@@ -1,718 +1,236 @@
-/* globals delivery */
-var $ = jQuery;
+import { sendAjaxRequest } from "./utils/ajax.js";
+import { getCookie, eraseCookie} from "./handlers/cookies.js";
+import { handleRegisterResponse } from "./utils/register.js";
+import {
+  handlePasswordRecoveryResponse,
+  handlePasswordChangeResponse,
+} from "./utils/password.js";
+import {
+  getFormValidity,
+  handleLoginResponse,
+  toggleLoginFormVisibility,
+  isLogged,
+  getUserByToken
 
-// login
-$(document).on("click", ".delivery-login", function (event) {
-  console.log("OK");
-  if (getFormValidity(this)) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    $.post(
-      delivery.ajax,
-      {
-        email: $("#email-login").val(),
-        password: $("#password-login").val(),
-        deliverySession: Cookies.get("delivery-session"),
-        action: "login",
-        beforeSend: function () {
-          // Before we send the request, remove the .hidden class from the spinner and default to inline-block.
-          $("#loader").removeClass("hidden");
-        },
-      },
-      function (res) {
-        if ($("#voucher-api-token").length === 1) {
-          var obj = JSON.parse(res);
-          if (obj.error) {
-            console.log(
-              $(this).val() + " " + $(this).attr("delivery-qty") + " " + qty
-            );
-            $("#delivery-login-error").html(obj.error);
-          } else {
-            console.dir(obj);
-            $("#voucher-first_name").val(obj.first_name);
-            $("#voucher-last_name").val(obj.last_name);
-            $("#voucher-email").val(obj.email);
-            $("#voucher-address").val(obj.address);
-            $("#voucher-city").val(obj.city);
-            $("#voucher-country").val(obj.country);
-            $("#voucher-post_code").val(obj.post_code);
-            $("#voucher-phone_number").val(obj.phone_number);
-            $("#voucher-api-token").val(obj.api_token);
-            Cookies.set("delivery-token", obj.api_token, {
-              expires: 36000, // il numero di giorni in cui il cookie sarà efficace
-            });
-            $("#delivery-login-error").html("");
-            $("#delivery-user-ok").html(delivery.login_ok_status);
-            $("#delivery-login-forms").slideUp();
-            $("#delivery-voucher-form").slideDown();
-            $("#delivery-logout").show();
-          }
-        }
-        $("#loader").addClass("hidden");
-      }
-    );
+} from "./utils/login.js";
+import { getCartCount, getCart } from "./utils/cartUtils.js";
+import { handleCartButtonClick, handleRemoveFromCartResponse } from "./handlers/cart.js";
+import { handlePaypalCheckout, handleStripeCheckout,handleStripeKey, getOrderById } from "./utils/checkout.js";
+// Importare altre funzioni e gestori
+
+document.addEventListener("DOMContentLoaded", () => {
+  let logged = isLogged();
+
+  if (logged) {
+    getUserByToken();
   }
-});
-// recupera password
-$(document).on("click", ".delivery-recover-password", function (event) {
-  if (getFormValidity(this)) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    $.post(
-      delivery.ajax,
-      {
-        email: $("#email-login").val(),
-        deliverySession: Cookies.get("delivery-session"),
-        action: "recover_password",
-        beforeSend: function () {
-          // Before we send the request, remove the .hidden class from the spinner and default to inline-block.
-          $("#loader").removeClass("hidden");
-        },
-      },
-      function (res) {
-        var obj = JSON.parse(res);
-        if (obj.message === null) {
-          $("#delivery-recover-ok").html(delivery.recover_ok_status);
-          $("#delivery-recover-error").html("");
-        } else {
-          $("#delivery-recover-ok").html("");
-          $("#delivery-recover-error").html(obj.message);
-        }
-        $("#loader").addClass("hidden");
-      }
-    );
-  }
-});
-// recupera password
-$(document).on("click", ".delivery-change-password", function (event) {
-  if (getFormValidity(this)) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    $.post(
-      delivery.ajax,
-      {
-        email: $("#email").val(),
-        password: $("#password").val(),
-        password_confirmation: $("#password_confirmation").val(),
-        token: $("#token").val(),
-        action: "change_password",
-        beforeSend: function () {
-          // Before we send the request, remove the .hidden class from the spinner and default to inline-block.
-          $("#loader").removeClass("hidden");
-        },
-      },
-      function (res) {
-        var obj = JSON.parse(res);
-        var error;
-        //     // console.dir(obj);
-        if (obj.errors) {
-          error = obj.message + "<br/>";
-          $.each(obj.errors, function (i, val) {
-            $.each(val, function (i2, val2) {
-              error += val2 + "<br/>";
-            });
-          });
-          $("#delivery-change-ok").html("");
-          $("#delivery-change-error").html(error);
-        } else {
-          $("#delivery-change-error").html("");
-          $("#delivery-change-ok").html(obj.message);
-        }
-        $("#loader").addClass("hidden");
-      }
-    );
-  }
-});
-// logout
-$(document).on("click", "#delivery-logout", function (event) {
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  Cookies.set("delivery-token", "", {
-    expires: 1, // il numero di giorni in cui il cookie sarà efficace
-  });
-  Cookies.set("delivery-session", "", {
-    expires: 1, // il numero di giorni in cui il cookie sarà efficace
-  });
+  
+  toggleLoginFormVisibility(!(logged));
+
+
   getCartCount();
-  $("#delivery-cart").html("");
-  getCart();
-  $("#delivery-login-forms").slideDown();
-  $("#delivery-voucher-form").slideUp();
-  $("#delivery-logout").hide();
-});
-// register
-$(document).on("click", ".delivery-register", function (event) {
-  if (getFormValidity(this)) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    $.post(
-      delivery.ajax,
-      {
-        first_name: $("#first_name").val(),
-        last_name: $("#last_name").val(),
-        email: $("#email").val(),
-        password: $("#password").val(),
-        address: $("#address").val(),
-        city: $("#city").val(),
-        country: $("#country").val(),
-        post_code: $("#post_code").val(),
-        phone_number: $("#phone_number").val(),
-        deliverySession: Cookies.get("delivery-session"),
-        action: "register_user",
-        beforeSend: function () {
-          // Before we send the request, remove the .hidden class from the spinner and default to inline-block.
-          $("#loader").removeClass("hidden");
-          // // console.log("removeHidden delivery-register");
-        },
-      },
-      function (res) {
-        if (res === "0") {
-          $("#delivery-register-error").html(delivery.error_status);
-        } else {
-          if ($("#voucher-api-token").length === 1) {
-            $("#voucher-first_name").val($("#first_name").val());
-            $("#voucher-last_name").val($("#last_name").val());
-            $("#voucher-email").val($("#email").val());
-            $("#voucher-address").val($("#address").val());
-            $("#voucher-city").val($("#city").val());
-            $("#voucher-country").val($("#country").val());
-            $("#voucher-post_code").val($("#post_code").val());
-            $("#voucher-phone_number").val($("#phone_number").val());
-            $("#voucher-api-token").val(res);
 
-            Cookies.set("delivery-token", res, {
-              expires: 36000, // il numero di giorni in cui il cookie sarà efficace
-            });
-            $("#delivery-register-error").html("");
-            $("#delivery-login-forms").hide();
-            $("#delivery-voucher-form").show();
-            $("#delivery-logout").show();
-            $("#delivery-user-ok").html(delivery.register_ok_status);
-          }
-        }
-        $("#loader").addClass("hidden");
-        // // console.log("addHidden delivery-register");
-      }
-    );
+  // Verifica se l'elemento con id "delivery-cart" esiste
+  // Se l'elemento esiste, chiama la funzione getCart()
+  if (document.getElementById("delivery-cart") !== null) {
+    getCart();
   }
-});
-//checkout
-$(document).on("click", ".delivery-checkout", function (event) {
-  if (getFormValidity(this)) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    var paymentMethod = $(this).attr("id");
-    $.post(
-      delivery.ajax,
-      {
-        first_name: $("#voucher-first_name").val(),
-        last_name: $("#voucher-last_name").val(),
-        email: $("#voucher-email").val(),
-        address: $("#voucher-address").val(),
-        city: $("#voucher-city").val(),
-        country: $("#voucher-country").val(),
-        post_code: $("#voucher-post_code").val(),
-        phone_number: $("#voucher-phone_number").val(),
-        notes: $("#voucher-notes").val(),
-        api_token: $("#voucher-api-token").val(),
-        voucher_name: $("#voucher-dest-name").val(),
-        voucher_email: $("#voucher-dest-email").val(),
-        deliverySession: Cookies.get("delivery-session"),
-        method: paymentMethod,
-        action: "checkout",
-        beforeSend: function () {
-          // Before we send the request, remove the .hidden class from the spinner and default to inline-block.
-          $("#loader").removeClass("hidden");
-          // // console.log("removeClass delivery-checkout");
-        },
-      },
-      function (res) {
-        $("#loader").addClass("hidden");
-        // console.log("OBJ");
-        //   // console.dir(res);
-        // // console.log("addClass delivery-checkout");
-        var obj = JSON.parse(res);
-        // // console.dir(obj);
-        if (obj.redirect) {
-          Cookies.set("delivery-session", "", {
-            expires: 1, // il numero di giorni in cui il cookie sarà efficace
-          });
-          $("#delivery-checkout-error").html("");
-          $("#delivery-checkout-ok").html(delivery.paypal_status);
-          window.location.href = obj.redirect;
-        } else if (obj.response && paymentMethod == "stripe") {
-          var clientSecret = JSON.parse(obj.response).clientSecret;
-          var error = JSON.parse(obj.response).error;
-          if (error) {
-            $("#delivery-checkout-error").html(error);
-            $("#delivery-checkout-ok").html("");
-          } else {
-            // console.dir(clientSecret);
-            getStripeKey();
-            // // console.dir(delivery.stripeKey);
-
-            stripeCheckoutInitialize(clientSecret);
-          }
-        } else {
-          $("#delivery-checkout-error").html(delivery.error_status);
-          $("#delivery-checkout-ok").html("");
-        }
-      }
-    );
-  }
-});
-
-// add/cart
-$(document).on("click change paste", ".delivery-add-to-cart", function (event) {
-  event.preventDefault();
-  event.stopImmediatePropagation();
-
-  var qty;
-  if ($(this).is("input")) {
-    qty = parseInt($(this).val()) - parseInt($(this).attr("delivery-qty"));
-    //       // console.log($(this).val()+' '+ $(this).attr("delivery-qty")+' '+qty);
-  } else {
-    qty = parseInt($(this).attr("delivery-qty"));
-  }
-  var attributePrice = 0;
-  var attributeValue;
-  var attributeId;
-  var attributeTheId;
-  if ($(this).attr("delivery-attributeValue") !== "") {
-    attributeValue = $(this).attr("delivery-attributeValue");
-  }
-  if ($(this).attr("delivery-attributePrice")) {
-    attributePrice = $(this).attr("delivery-attributePrice");
-  }
-  if ($(this).attr("delivery-attributeId")) {
-    attributeId = $(this).attr("delivery-attributeId");
-  }
-  if ($(this).attr("delivery-attributeTheId")) {
-    attributeTheId = $(this).attr("delivery-attributeTheId");
-  }
-
-  if ($("#delivery_lang")) {
-    lang = $("#delivery_lang").val();
-  }else{
-    lang = 'it';
-  }
-  if (qty !== 0) {
-    $.post(
-      delivery.ajax,
-      {
-        price: $(this).attr("delivery-price"),
-        attributePrice: attributePrice,
-        productId: $(this).attr("delivery-productId"),
-        qty: qty,
-        calice: attributeValue,
-        attributeId: attributeId,
-        attributeTheId: attributeTheId,
-        deliverySession: Cookies.get("delivery-session"),
-        lang: lang,
-        action: "add_to_cart",
-        beforeSend: function () {
-          // Before we send the request, remove the .hidden class from the spinner and default to inline-block.
-
-          $("#loader").removeClass("hidden");
-          //// console.log("removeClass delivery-add-to-cart");
-        },
-      },
-      function (res) {
-        Cookies.set("delivery-session", res, { expires: 36000 });
-        getCartCount();
-
-        if ($("#delivery-cart").length === 1) {
-          $("#delivery-cart").html("");
-          getCart();
-        }
-
-        $("#loader").addClass("hidden");
-        //    $("html, body").animate({ scrollTop: "0" });
-      }
-    );
-  }
-});
-
-//elimina dal carrello
-$(document).on("click", ".delivery-remove-from-cart", function (event) {
-  event.preventDefault();
-  event.stopImmediatePropagation();
-
-  var rowId;
-  if ($(this).attr("delivery-attributeId") !== "") {
-    rowId = $(this).attr("delivery-attributeId");
-  } else {
-    rowId = $(this).attr("delivery-productId");
-  }
-  //event.stopImmediatePropagation();
-  $.post(
-    delivery.ajax,
-    {
-      beforeSend: function () {
-        // Before we send the request, remove the .hidden class from the spinner and default to inline-block.
-        $("#loader").removeClass("hidden");
-        //// console.log("removeClass delivery-remove-to-cart");
-      },
-      productId: rowId,
-      deliverySession: Cookies.get("delivery-session"),
-      action: "remove_from_cart",
-    },
-    function (res) {
-      // console.log(Cookies.get("delivery-session"));
-      // console.log("REMOVE");
-      // console.dir(res);
-      /*  Cookies.set("delivery-session", res, {
-                    expires: 36000 // il numero di giorni in cui il cookie sarà efficace
-                });*/
-      getCartCount();
-      if ($("#delivery-cart").length === 1) {
-        $("#delivery-cart").html("");
-        getCart();
-      }
-      $("#loader").addClass("hidden");
-      // // console.log("addClass delivery-remove-to-cart");
-    }
-  ).fail(function (response) {
-    // console.log("errore get carrt");
-    // console.dir(response);
-  });
-});
-if ($("#delivery-cart").length === 1) {
-  getCart();
-}
-
-function getOrderById() {
-  $.post(
-    delivery.ajax,
-    {
-      orderId: $("#delivery-order-completed").attr("delivery-order-completed"),
-      deliverySession: Cookies.get("delivery-session"),
-      beforeSend: function () {
-        // Before we send the request, remove the .hidden class from the spinner and default to inline-block.
-        $("#loader").removeClass("hidden");
-        // // console.log("removeClass delivery-order-completed");
-      },
-      action: "get_order",
-    },
-    function (res) {
-      var obj = JSON.parse(res);
-
-      $("#delivery-order-" + obj.status).show();
-      $.each(obj, function (i, val) {
-        if ($("#delivery-order-" + i + "-value").length === 1) {
-          $("#delivery-order-" + i + "-value").html(
-            i == "grand_total" ? Number(val).toFixed(2) : val
-          );
-        }
-      });
-
-      // // console.log("addClass delivery-order-completed");
-      $("#loader").addClass("hidden");
-    }
-  );
-}
-
-$(function () {
-  //forceWPMLredirect();
-  if ($("#delivery-order-completed").length === 1) {
-    Cookies.set("delivery-session", "", {
-      expires: 1, // il numero di giorni in cui il cookie sarà efficace
-    });
+  
+  if (document.getElementById("delivery-order-completed")!== null) {
     getOrderById();
   }
-  getCartCount(); //aggiunge il numero di elementi nel carrello al menù "regala un'esperienza"
-  isLogged(); //controlla se il cliente è loggato
 });
 
-function currencyFormat(num) {
-  return (
-    num
-      .toFixed(2)
-      .replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1,")
-      .replace(".", ",") + " €"
-  );
-}
+// Event listeners
 
-function getFormValidity(submit_button) {
-  var form_elements = $(submit_button).parents("form")[0];
-  var ret = true;
-  $.each(form_elements, function (i, form_element) {
-    if (!form_element.checkValidity() && $(form_element).is("input")) {
-        $(form_element).parent().addClass("field_not_valid");
-    }else{
-        $(form_element).parent().removeClass("field_not_valid");
+document.addEventListener("change", function (event) {
+  if (event.target.classList.contains("delivery-add-to-cart")) {
+    handleCartButtonClick(event);
+  }
+});
+document.addEventListener("paste", function (event) {
+  if (event.target.classList.contains("delivery-add-to-cart")) {
+    handleCartButtonClick(event);
+  }
+});
+
+document.addEventListener("click", function (event) {
+  
+  //  Aggiungi al carrello (cambia le quantità)
+  if (event.target.classList.contains("delivery-add-to-cart")) {
+    handleCartButtonClick(event);
+  }
+
+  // Rimuovi dal carrello
+  if (event.target.classList.contains("delivery-remove-from-cart")) {
+    console.dir("remove from cart");
+
+    // Mostra il loader
+    document.getElementById("loader").classList.remove("hidden");
+    let productId = event.target.getAttribute("delivery-productId");
+    if (event.target.getAttribute("delivery-attributeId") !== "") {
+        productId = event.target.getAttribute("delivery-attributeId");
     }
-  });
-  return form_elements.reportValidity();
-}
+    
+    event.preventDefault();
+    var data =
+      "productId=" +
+      encodeURIComponent(productId) +
+      "&deliverySession=" +
+      encodeURIComponent(getCookie("delivery-session")) +
+      "&action=remove_from_cart";
+      sendAjaxRequest(data, handleRemoveFromCartResponse);
 
-function isLogged() {
-  if (Cookies.get("delivery-token")) {
-    $.post(
-      delivery.ajax,
-      {
-        beforeSend: function () {
-          // Before we send the request, remove the .hidden class from the spinner and default to inline-block.
-          $("#loader").removeClass("hidden");
-          // // console.log("removeClass delivery-isLogged");
-        },
-        apiToken: Cookies.get("delivery-token"),
-        action: "is_logged",
-      },
-      function (res) {
-        if ($("#delivery-login-forms").length === 1) {
-          $("#delivery-login-forms").hide();
-          $("#delivery-voucher-form").show();
-        }
-        if ($("#voucher-api-token").length === 1) {
-          var obj = JSON.parse(res);
-          //      // console.dir(obj);
-          $("#voucher-first_name").val(obj.first_name);
-          $("#voucher-last_name").val(obj.last_name);
-          $("#voucher-email").val(obj.email);
-          $("#voucher-address").val(obj.address);
-          $("#voucher-city").val(obj.city);
-          $("#voucher-country").val(obj.country);
-          $("#voucher-post_code").val(obj.post_code);
-          $("#voucher-phone_number").val(obj.phone_number);
-          $("#voucher-api-token").val(obj.api_token);
-        }
 
-        $("#loader").addClass("hidden");
-        // // console.log("addClass delivery-isLogged");
-      }
-    );
-  } else {
-    $("#delivery-logout").hide();
-    if ($("#delivery-login-forms").length === 1) {
-      $("#delivery-login-forms").show();
-      $("#delivery-voucher-form").hide();
+
+    
+  }
+
+
+  //Login
+  if (event.target.classList.contains("delivery-login")) {
+    event.preventDefault();
+    var form = event.target.closest("form");
+    if (getFormValidity(form)) {
+      event.preventDefault();
+      var data =
+        "email=" +
+        encodeURIComponent(document.getElementById("email-login").value) +
+        "&password=" +
+        encodeURIComponent(document.getElementById("password-login").value) +
+        "&deliverySession=" +
+        encodeURIComponent(getCookie("delivery-session")) +
+        "&action=login";
+      sendAjaxRequest(data, handleLoginResponse);
     }
   }
-}
 
-function getCart() {
-  $.post(
-    delivery.ajax,
-    {
-      beforeSend: function () {
-        // Before we send the request, remove the .hidden class from the spinner and default to inline-block.
-        $("#loader").removeClass("hidden");
-        // // console.log("removeClass delivery-getCart");
-      },
-      deliverySession: Cookies.get("delivery-session"),
-      action: "getCart",
-    },
-    function (res) {
-      obj = [];
-      if (res != "") obj = JSON.parse(res);
-      var subtotal = 0;
-      var rowTotal = 0;
-      var rowProduct = "";
-      var html;
+  //Recupera pwd
+  if (event.target.classList.contains("delivery-recover-password")) {
+    var form = event.target.closest("form");
+    if (getFormValidity(form)) {
+      event.preventDefault();
+      var data =
+        "email=" +
+        encodeURIComponent(document.getElementById("email-login").value) +
+        "&deliverySession=" +
+        encodeURIComponent(getCookie("delivery-session")) +
+        "&action=recover_password";
+      sendAjaxRequest(data, handlePasswordRecoveryResponse);
+    }
+  }
 
-      if ($("#row-head").length === 0) {
-        html =
-          "    <div class='grid'>" +
-          "        <div class='row head' id='row-head'>" +
-          "            <div class='col-6'>" +
-          delivery.gift_label +
-          "</div>" +
-          "            <div class='col-3'>" +
-          delivery.persons_label +
-          "</div>" +
-          "            <div class='col-3 alignRight'>" +
-          delivery.total_label +
-          "</div>" +
-          "        </div>" +
-          "    </div>";
-        $("#delivery-cart").append(html);
-      }
+  //Cambia pwd
+  if (event.target.classList.contains("delivery-change-password")) {
+    var form = event.target.closest("form");
+    if (getFormValidity(form)) {
+      event.preventDefault();
+      var data =
+        "email=" +
+        encodeURIComponent(document.getElementById("email").value) +
+        "&password=" +
+        encodeURIComponent(document.getElementById("password").value) +
+        "&password_confirmation=" +
+        encodeURIComponent(
+          document.getElementById("password_confirmation").value) +
+        "&token=" +
+        encodeURIComponent(document.getElementById("token").value) +
+        "&action=change_password";
+      sendAjaxRequest(data, handlePasswordChangeResponse);
+    }
+  }
 
-      if (obj) {
-        $.each(obj, function (i, val) {
-          // console.dir(val);
-          var attributeValue = "";
-          var attributeId = "";
-          var attributeTheId = "";
-          if ($("#row-" + val.id).length === 0) {
-            rowTotal = val.quantity * val.price;
-            rowProduct = val.name;
-            if (val.attributes.attributeId !== undefined) {
-              rowProduct +=
-                " + " +
-                val.attributes.label.replace(/\\'/g, "'").replace(/\\/g, "");
-              attributeValue = val.attributes.label.replace(/'/g, "&#39;");
-              attributeId = val.attributes.attributeId;
-              attributeTheId = val.attributes.attributeTheId;
+  //Logout
+  if (event.target.id === "delivery-logout") {
+    event.preventDefault();
+    eraseCookie("delivery-token");
+    eraseCookie("delivery-session");
+    // Verifica se l'elemento con id "delivery-cart" esiste
+    var deliveryCart = document.getElementById("delivery-cart");
+  
+    // Se l'elemento esiste, chiama la funzione getCart()
+    if (deliveryCart !== null) {
+      getCart();
+    }
+    getCartCount();
+    if (document.getElementById("delivery-cart"))
+      document.getElementById("delivery-cart").innerHTML = "";
+    toggleLoginFormVisibility(true);
+  }
+
+  //Registrati  
+  if (event.target.classList.contains("delivery-register")) {
+    var form = event.target.closest("form");
+    if (getFormValidity(form)) {
+      event.preventDefault();
+      var data =
+        "email=" +
+        encodeURIComponent(document.getElementById("email").value) +
+        "&password=" +
+        encodeURIComponent(document.getElementById("password").value) +
+        "&first_name=" +
+        encodeURIComponent(document.getElementById("first_name").value) +
+        "&last_name=" +
+        encodeURIComponent(document.getElementById("last_name").value) + 
+        "&phone_number=" +
+        encodeURIComponent(document.getElementById("phone_number").value) +
+        "&deliverySession=" +
+        encodeURIComponent(getCookie("delivery-session")) +
+        "&action=register_user";
+      sendAjaxRequest(data, handleRegisterResponse);
+    }
+  }
+
+    if (event.target.classList.contains("delivery-checkout")) {
+        if (getFormValidity(event.target)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
+            const paymentMethod = event.target.id;
+            var data =
+            "first_name=" +
+            encodeURIComponent(document.getElementById("voucher-first_name").value) +
+            "&last_name=" +
+            encodeURIComponent(document.getElementById("voucher-last_name").value) +
+            "&email=" +
+            encodeURIComponent(document.getElementById("voucher-email").value) +
+            "&address=" +
+            encodeURIComponent(document.getElementById("voucher-address").value) + 
+            "&city=" +
+            encodeURIComponent(document.getElementById("voucher-city").value) +
+            "&country=" +
+            encodeURIComponent(document.getElementById("voucher-country").value) +
+            "&post_code=" +
+            encodeURIComponent(document.getElementById("voucher-post_code").value) +
+            "&phone_number=" +
+            encodeURIComponent(document.getElementById("voucher-phone_number").value) +
+            "&notes=" +
+            encodeURIComponent(document.getElementById("voucher-notes").value) +
+            "&api_token=" +
+            encodeURIComponent(document.getElementById("voucher-api-token").value) +
+            "&voucher_name=" +
+            encodeURIComponent(document.getElementById("voucher-dest-name").value) +
+            "&voucher_email=" +
+            encodeURIComponent(document.getElementById("voucher-dest-email").value) +
+            "&deliverySession=" +
+            encodeURIComponent(getCookie("delivery-session")) +
+            "&method=" +
+            encodeURIComponent(paymentMethod) +
+            "&action=checkout";
+            console.dir(data);
+
+            document.querySelector("#loader").classList.remove("hidden");
+
+            if (paymentMethod == 'paypal'){
+              sendAjaxRequest(data, handlePaypalCheckout);
             }
-            html =
-              "<div class='row' id='row-" +
-              val.id +
-              "'>" +
-              "<div class='col-6'>" +
-              "<a href=''>" +
-              rowProduct +
-              "</a>" +
-              "<a href='#' class='no-barba delivery-cart-button delivery-remove-from-cart' delivery-productId='" +
-              val.attributes.productId +
-              "' delivery-attributeId='" +
-              attributeId +
-              "' ><span class='icon-qpc-delivery-06'></span></a>" +
-              "</div>" +
-              "<div class='col-3'>" +
-              //    val.quantity +
-
-              "<a href='#' class='no-barba delivery-cart-button delivery-add-to-cart' delivery-attributeValue='" +
-              attributeValue +
-              "' delivery-attributeId='" +
-              attributeId +
-              "' delivery-attributeTheId='" +
-              attributeTheId +
-              "' delivery-price='" +
-              val.price +
-              "' delivery-productId='" +
-              val.attributes.productId +
-              "' delivery-qty='-1' >-</a>" +
-              "<input type='text' class='delivery-add-to-cart' delivery-price='" +
-              val.price +
-              "' delivery-productId='" +
-              val.attributes.productId +
-              "'  delivery-qty='" +
-              val.quantity +
-              "' value='" +
-              val.quantity +
-              "' delivery-attributeValue='" +
-              attributeValue +
-              "' delivery-attributeId='" +
-              attributeId +
-              "' delivery-attributeTheId='" +
-              attributeTheId +
-              "' />" +
-              "<a href='#' class='no-barba delivery-cart-button delivery-add-to-cart' delivery-attributeValue='" +
-              attributeValue +
-              "' delivery-attributeId='" +
-              attributeId +
-              "' delivery-attributeTheId='" +
-              attributeTheId +
-              "' delivery-price='" +
-              val.price +
-              "' delivery-productId='" +
-              val.attributes.productId +
-              "' delivery-qty='1' >+</a>" +
-              "</div>" +
-              "<div class='col-3 alignRight boldFont'>" +
-              currencyFormat(rowTotal) +
-              "</div>" +
-              "</div>";
-            $("#delivery-cart").append(html);
-
-            subtotal += rowTotal;
-          }
-        });
-      }
-      if ($("#row-total").length === 0) {
-        html =
-          "<div class='row' id='row-total'>" +
-          "<div class='col-3'></div>" +
-          "<div class='col-3'> </div>" +
-          "<div class='col-6 alignRight'>" +
-          delivery.subtotal_label +
-          " " +
-          currencyFormat(subtotal) +
-          "</div>" +
-          "</div>";
-        $("#delivery-cart").append(html);
-      }
-      $("#loader").addClass("hidden");
-      // // console.log("removeaddClassClass delivery-getCart");
+            if (paymentMethod == 'stripe'){
+              var dataKey = "action=get_stripe_key";
+              sendAjaxRequest(dataKey, handleStripeKey);
+              sendAjaxRequest(data, handleStripeCheckout);
+            }
+            
+        }
     }
-  );
-}
-function getCartCount() {
-  // console.log("entro nella chiamata");
-  $.post(
-    delivery.ajax,
-    {
-      deliverySession: Cookies.get("delivery-session"),
-      action: "getCart",
-    },
-    function (res) {
-      // console.dir(res);
-      tot = countCartItems(res);
-      $("#delivery-cart-count").html(tot);
-      if (tot == 0) $(".btn-add-to-cart").hide();
-      else $(".btn-add-to-cart").show();
-    }
-  ).fail(function (response) {
-    // console.log("errore get cart");
-  });
-}
 
-function countCartItems(res) {
-  total = 0;
-  if (res) {
-    obj = JSON.parse(res);
-
-    $.each(obj, function (i, val) {
-      total += parseInt(val.quantity);
-    });
-  }
-  return total;
-}
-
-function forceWPMLredirect() {
-  $.post(
-    delivery.ajax,
-    {
-      action: "forceRightPermalinkInWPMLSwitcher",
-      url: window.location.href,
-    },
-    function (res) {
-      // console.dir(res);
-      obj = JSON.parse(res);
-
-      $.each(obj, function (i, val) {
-        $("." + i + " a").attr("href", val);
-      });
-    }
-  );
-}
-
-async function stripeCheckoutInitialize(clientSecret) {
-  const checkout = await stripe.initEmbeddedCheckout({
-    clientSecret,
-  });
-
-  // Mount Checkout
-  checkout.mount("#checkout");
-
-  $("#checkout iframe").attr("scrolling", "yes");
-  $("#popup_stripe_checkout").toggleClass("visible");
-  $("#popup_stripe_checkout .icon-close").on("click", function () {
-    $("#popup_stripe_checkout").toggleClass("visible");
-    checkout.unmount();
-    checkout.destroy();
-  });
-}
-
-function getStripeKey() {
-  $.post(
-    delivery.ajax,
-    {
-      action: "get_stripe_key",
-    },
-    function (res) {
-      obj = JSON.parse(res);
-      // console.dir(obj);
-      if (obj.error) {
-        $("#delivery-login-error").html(obj.error);
-        return null;
-      } else {
-        delivery.stripeKey = obj.response;
-        // console.dir(delivery.stripeKey);
-        var stripe = Stripe(delivery.stripeKey); // Replace with your key
-      }
-    }
-  );
-}
+});

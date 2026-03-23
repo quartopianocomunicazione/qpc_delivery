@@ -55,6 +55,7 @@ class Qpc_Delivery
 	 */
 	private static $lang = 'it';
 	private static $fd_version = 'id'; //oppure 'slug'
+	private $_mailchimp;
 
 	public $cart;
 
@@ -105,6 +106,8 @@ class Qpc_Delivery
 			add_action('wp_ajax_nopriv_change_password', array($plugin, 'change_password'));
 			add_action('wp_ajax_register_user', array($plugin, 'register_user'));
 			add_action('wp_ajax_nopriv_register_user', array($plugin, 'register_user'));
+			add_action('wp_ajax_get_user', array($plugin, 'get_user'));
+			add_action('wp_ajax_nopriv_get_user', array($plugin, 'get_user'));
 			add_action('wp_ajax_checkout', array($plugin, 'checkout'));
 			add_action('wp_ajax_nopriv_get_order', array($plugin, 'get_order'));
 			add_action('wp_ajax_get_order', array($plugin, 'get_order'));
@@ -121,33 +124,78 @@ class Qpc_Delivery
 			add_action('wp_ajax_nopriv_get_stripe_key', array($plugin, 'get_stripe_key'));
 			add_action('wp_ajax_forceRightPermalinkInWPMLSwitcher', array($plugin, 'forceRightPermalinkInWPMLSwitcher'));
 			add_action('wp_ajax_nopriv_forceRightPermalinkInWPMLSwitcher', array($plugin, 'forceRightPermalinkInWPMLSwitcher'));
-			add_action('wp_enqueue_scripts', array($plugin, 'ja_global_enqueues'));
+			add_action('wp_enqueue_scripts', array($plugin, 'ja_global_enqueues'), 20);
 		}
 
 	}
 
+	public static function compileGlobalJS(){
+		
+		$filename = plugin_dir_path(__FILE__) . 'js/utils/global.js';
+
+		$jsString = '
+		export var delivery = 
+		' . json_encode(
+			self::stringTranslations()[self::$lang]
+		) . ";\n";
+// error_log(self::$lang.' ' .$jsString);
+		file_put_contents($filename, $jsString);
+	}
+
+
+	private static function stringTranslations(){
+		return [
+			'it' => [
+				'ajax' => admin_url('admin-ajax.php'),
+				'gift_label' =>	'Regalo',
+				'persons_label' => 'Voucher',
+				'total_label' => 'Totale',
+				'subtotal_label' => 'Subtotale',
+				'error_status' => "Qualcosa è andato storto. Riprova.",
+				'paypal_status' => "Stai per essere reindirizzato sul sito di PayPal...",
+				'register_ok_status' => "Grazie per esserti registrato!",
+				'login_ok_status' => "Accesso effettuato correttamente",
+				'recover_ok_status' => "Controlla la tua e-mail e clicca sul pulsante per reimpostare la password.",
+				'stripe_key' => ''
+			],
+			'en' => [
+				'ajax' => admin_url('admin-ajax.php'),
+				'gift_label' => 'Gift',
+				'persons_label' => 'Voucher',
+				'total_label' => 'Total',
+				'subtotal_label' => 'Subtotal',
+				'error_status' => "Something went wrong. Please try later.",
+				'paypal_status' => "You're been redirected on PayPal...",
+				'register_ok_status' => "Thank for registering!",
+				'login_ok_status' => "Login successfully",
+				'recover_ok_status' => "Check your email and click on the button to reset your password.",
+				'stripe_key' => ''
+			]
+		];
+	}
 	public static function ja_global_enqueues()
 	{
-		wp_enqueue_script('delivery', plugin_dir_url(__FILE__) . 'js/delivery.js', array('global'), '1.0.0', true);
-		wp_enqueue_style('delivery', plugin_dir_url(__FILE__) . 'css/bootstrap-grid.min.css', array(), rand(111, 9999));
+			
+		if (
+			is_page_template('template-vouchers.php') || 
+			is_page_template('template-cart.php') || 
+			is_page_template('template-cart-step-2.php') || 
+			is_page_template('template-change-password.php') || 
+			is_page_template('template-menu.php') || 
+			is_page_template('template-order-complete.php') || 
+			is_page_template('template-recover-password.php') 
+		){
 
-		wp_localize_script(
-			'delivery',
-			'delivery',
-			array(
-				'ajax' => admin_url('admin-ajax.php'),
-				'gift_label' => __('Regalo', 'mos-theme'),
-				'persons_label' => __('Voucher', 'mos-theme'),
-				'total_label' => __('Totale', 'mos-theme'),
-				'subtotal_label' => __('Subtotale', 'mos-theme'),
-				'error_status' => __("Qualcosa è andato storto. Riprova.", 'mos-theme'),
-				'paypal_status' => __("Stai per essere reindirizzato sul sito di PayPal...", 'mos-theme'),
-				'register_ok_status' => __("Grazie per esserti registrato!", 'mos-theme'),
-				'login_ok_status' => __("Accesso effettuato correttamente", 'mos-theme'),
-				'recover_ok_status' => __("Controlla la tua e-mail e clicca sul pulsante per reimpostare la password.", 'mos-theme'),
-				'stripe_key' => ''
-			)
-		);
+			if (self::hasStripe()){
+				wp_enqueue_script('stripe', 'https://js.stripe.com/v3', array(), '1.0.0', true);
+			}
+			wp_enqueue_script_module('delivery', plugin_dir_url(__FILE__) . 'js/delivery.js', array(), '1.0.0', array('in_footer' => true)); 
+			
+	
+			// Pass the correct AJAX URL to your script
+			wp_enqueue_style('delivery', plugin_dir_url(__FILE__) . 'css/bootstrap-grid.min.css', array(), rand(111, 9999));
+		}
+	
 	}
 
 
@@ -292,6 +340,7 @@ class Qpc_Delivery
 	{
 		global $wpdb;
 
+		self::detectLanguage();
 		if (isset($_POST['deliverySession']))
 			echo json_encode(self::$_delivery->getCart($_POST['deliverySession']));
 		wp_die();
@@ -301,23 +350,33 @@ class Qpc_Delivery
 	 * Delivery Register (AJAX)
 	 *
 	 */
-	public  function register_user()
+	public function register_user()
 	{
 		global $wpdb;
 		$register_response = self::$_delivery->register($_POST['deliverySession'], $_POST['first_name'], $_POST['last_name'], $_POST['email'], $_POST['password'], $_POST['address'], $_POST['city'], $_POST['country'], $_POST['post_code'], $_POST['phone_number']);
-
-		if ($register_response) {
+		if ($register_response===true) {
 
 			$login_response = self::$_delivery->login($_POST['deliverySession'], $_POST['email'], $_POST['password']);
-			$this->_mailchimp->addSubscriber($_POST['first_name'], $_POST['last_name'], $_POST['email']);
-			echo $login_response['api_token'];
+		//	$this->_mailchimp->addSubscriber($_POST['first_name'], $_POST['last_name'], $_POST['email']);
+			echo json_encode(['api_token' => $login_response['api_token']]);
 
 		} else {
 
-			echo 0;
+			echo json_encode(array_values((array) $register_response));
 
 		}
 
+		wp_die();
+	}
+
+	/**
+	 * Delivery Get user by token (AJAX)
+	 *
+	 */
+	public function get_user(){
+	
+		global $wpdb;
+		echo json_encode(self::$_delivery->user($_POST['deliveryToken']));
 		wp_die();
 	}
 
@@ -359,6 +418,7 @@ class Qpc_Delivery
 	public function is_logged()
 	{
 		global $wpdb;
+		self::detectLanguage();
 		echo json_encode(self::$_delivery->user($_POST['apiToken']));
 		wp_die();
 	}
@@ -370,6 +430,7 @@ class Qpc_Delivery
 	public function checkout()
 	{
 		global $wpdb;
+		self::detectLanguage();
 		switch ($_POST['method']){
 			case 'stripe':
 				$checkout_response = self::$_delivery->checkout_stripe($_POST['deliverySession'], $_POST['first_name'], $_POST['last_name'], $_POST['address'], $_POST['city'], $_POST['country'], $_POST['post_code'], $_POST['phone_number'], $_POST['notes'], $_POST['api_token'], $_POST['voucher_name'], $_POST['voucher_email']);
@@ -390,6 +451,7 @@ class Qpc_Delivery
 	public function get_stripe_key(){
 		global $wpdb;
 
+		self::detectLanguage();
 		$response = self::$_delivery->get_stripe_key();
 		echo json_encode($response);
 
@@ -403,6 +465,7 @@ class Qpc_Delivery
 	*/
    public static function hasStripe(){
 
+	self::detectLanguage();
 		$response = self::$_delivery->get_stripe_key();
 	   	if (array_key_exists('response',$response)){
 			return $response['response'];
@@ -417,6 +480,7 @@ class Qpc_Delivery
 	public function get_product()
 	{
 		global $wpdb;
+		self::detectLanguage();
 		//	echo json_encode( $this->_delivery->getProductById( $_POST['productId'] ) );
 		echo json_encode(self::$_delivery->getProduct($_POST['productId'], self::$fd_version));
 		wp_die();
@@ -428,6 +492,7 @@ class Qpc_Delivery
 	public function get_order()
 	{
 		global $wpdb;
+		self::detectLanguage();
 		echo json_encode(self::$_delivery->getOrderById($_POST['orderId'], $_POST['deliverySession']));
 		wp_die();
 	}
@@ -437,9 +502,7 @@ class Qpc_Delivery
 	public function add_to_cart()
 	{
 		global $wpdb;
-
 		$this->detectLanguage();
-		error_log(json_encode($_POST, true));
 		self::$_delivery->addToCart($_POST['deliverySession'], $_POST['price'], $_POST['productId'], $_POST['calice'], $_POST['attributePrice'], $_POST['attributeId'], $_POST['attributeId'], self::$lang, $_POST['qty']);
 		echo self::$_delivery->getDeliverySession();
 		wp_die();
@@ -451,9 +514,9 @@ class Qpc_Delivery
 	public function remove_from_cart()
 	{
 		global $wpdb;
+		self::detectLanguage();
 		$response = self::$_delivery->removeFromCart($_POST['deliverySession'], $_POST['productId']);
-	//	echo $response;
-		echo self::$_delivery->getDeliverySession();
+		echo ( $response );
 		wp_die();
 	}
 
@@ -538,30 +601,30 @@ class Qpc_Delivery
 	 */
 	public static function finedelivery_api_rewrite_rules( $wp_rewrite ) {
 
-		if (is_plugin_active('sitepress-multilingual-cms/sitepress.php')){
-			$fd_rules = [];
-			if ($page_template_menu = self::get_pages_by_template_filename()) {
+		// if (is_plugin_active('sitepress-multilingual-cms/sitepress.php')){
+		// 	$fd_rules = [];
+		// 	if ($page_template_menu = self::get_pages_by_template_filename()) {
 
-				$languages = apply_filters('wpml_active_languages', NULL, 'orderby=id&order=desc');
+		// 		$languages = apply_filters('wpml_active_languages', NULL, 'orderby=id&order=desc');
 
-				if (!empty($languages)) {
-					foreach ($languages as $l) {
-						if ($l['active']) {
-							$translatedPageID =  apply_filters('wpml_object_id',  $page_template_menu->ID, 'page', FALSE, $l['language_code']);
-							$translatedPage = get_post($translatedPageID);
-							$lang_prefix = (($l['code'] == self::$lang) ? '' : $l['code'].'/' );
-							$fd_rules = array(
-								$lang_prefix.$translatedPage->post_name . '/(.+)/(.+)/?' => 'index.php??pagename=' . $translatedPage->post_name . '&category_slug=$matches[1]&product_slug=$matches[2]',
-								$lang_prefix.$translatedPage->post_name . '/(.+)/?' => 'index.php??pagename=' . $translatedPage->post_name . '&category_slug=$matches[1]'
-							);
-						}
-					}
-				}
-				$wp_rewrite->rules = $fd_rules + $wp_rewrite->rules;
-			}
+		// 		if (!empty($languages)) {
+		// 			foreach ($languages as $l) {
+		// 				if ($l['active']) {
+		// 					$translatedPageID =  apply_filters('wpml_object_id',  $page_template_menu->ID, 'page', FALSE, $l['language_code']);
+		// 					$translatedPage = get_post($translatedPageID);
+		// 					$lang_prefix = (($l['code'] == self::$lang) ? '' : $l['code'].'/' );
+		// 					$fd_rules = array(
+		// 						$lang_prefix.$translatedPage->post_name . '/(.+)/(.+)/?' => 'index.php??pagename=' . $translatedPage->post_name . '&category_slug=$matches[1]&product_slug=$matches[2]',
+		// 						$lang_prefix.$translatedPage->post_name . '/(.+)/?' => 'index.php??pagename=' . $translatedPage->post_name . '&category_slug=$matches[1]'
+		// 					);
+		// 				}
+		// 			}
+		// 		}
+		// 		$wp_rewrite->rules = $fd_rules + $wp_rewrite->rules;
+		// 	}
 
 
-		}else{
+		// }else{
 			/**
 			 * Add tag for Delivery products
 			 */
@@ -579,7 +642,7 @@ class Qpc_Delivery
 			 */
 			add_rewrite_rule( '^menu/([^/]*)/?', 'index.php??page_id=2697&category_slug=$matches[1]', 'top' );
 		
-		}
+		// }
 	}
 	public static function finedelivery_api_rewrite_filter( $query_vars ){
 		$query_vars[] = 'category_slug';
@@ -732,12 +795,17 @@ class Qpc_Delivery
 	}
 
 	private static function detectLanguage()
-	{
+	{	 
 		if (is_plugin_active('sitepress-multilingual-cms/sitepress.php')) {
 			self::$lang = apply_filters( 'wpml_current_language', NULL );
 		} else {
 			self::$lang = 'it';
 		}
+
+		if (isset($_POST['lang'])){
+			self::$lang = $_POST['lang'];
+		}
+			self::compileGlobalJS();
 	}
 	public static function getProductSlug($product)
 	{

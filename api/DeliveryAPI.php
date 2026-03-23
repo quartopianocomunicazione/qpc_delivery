@@ -182,7 +182,7 @@ class DeliveryAPI {
 			return true;
 		}
 
-		return false;
+		return $response;
 	}
 
 	public function login( $deliverySession, $email, $password ) {
@@ -360,11 +360,10 @@ class DeliveryAPI {
 		curl_setopt_array( $curl, $data );
 		$response = curl_exec( $curl );
 		$err      = curl_error( $curl );
-
 		if ( $err ) {
 			return "cURL Error #:" . $err;
 		}
-			return json_decode( $response, true );
+			return  $deliverySession;
 	}
 
 
@@ -608,4 +607,29 @@ class DeliveryAPI {
 		return $this->deliverySession;
 	}
 
+	public function getUser($deliverySession){
+		
+
+		$curl = curl_init();
+		
+		curl_setopt_array($curl, array(
+		  CURLOPT_URL => API_BASEURL .'/user',
+		  CURLOPT_RETURNTRANSFER => true,
+		  CURLOPT_ENCODING => '',
+		  CURLOPT_MAXREDIRS => 10,
+		  CURLOPT_TIMEOUT => 0,
+		  CURLOPT_FOLLOWLOCATION => true,
+		  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+		  CURLOPT_CUSTOMREQUEST => 'GET',
+		  CURLOPT_HTTPHEADER => array(
+			'Authorization: Basic '.$deliverySession
+		  ),
+		));
+		
+		$response = curl_exec($curl);
+		
+		curl_close($curl);
+		echo $response;
+	}
+		
 }
